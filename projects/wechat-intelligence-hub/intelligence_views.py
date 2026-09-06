@@ -769,7 +769,13 @@ def brief_report(
     freshness_hours: float | None = None
     if latest_db_time:
         try:
-            freshness_hours = max(0.0, (current - datetime.fromisoformat(latest_db_time)).total_seconds() / 3600)
+            latest_parsed = datetime.fromisoformat(latest_db_time)
+            current_fresh = current
+            if latest_parsed.tzinfo is not None and current_fresh.tzinfo is None:
+                current_fresh = current_fresh.replace(tzinfo=latest_parsed.tzinfo)
+            elif latest_parsed.tzinfo is None and current_fresh.tzinfo is not None:
+                latest_parsed = latest_parsed.replace(tzinfo=current_fresh.tzinfo)
+            freshness_hours = max(0.0, (current_fresh - latest_parsed).total_seconds() / 3600)
         except ValueError:
             pass
 
