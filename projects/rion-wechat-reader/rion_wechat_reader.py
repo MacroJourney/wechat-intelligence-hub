@@ -1178,6 +1178,10 @@ def hardlink_resources(
         "image_hardlink_info_v4": "image",
         "video_hardlink_info_v4": "video",
         "file_hardlink_info_v4": "file",
+        # 旧版 macOS 微信（当前机器）使用 v3 表
+        "image_hardlink_info_v3": "image",
+        "video_hardlink_info_v3": "video",
+        "file_hardlink_info_v3": "file",
     }
     selected_families = {resource_family} if resource_family else set(table_families.values())
     md5 = str(metadata.get("md5") or "")
@@ -1821,7 +1825,12 @@ def classify_database_tables(tables: set[str]) -> list[str]:
         kinds.append("favorite")
     if "SnsTimeLine" in tables:
         kinds.append("sns")
-    if "image_hardlink_info_v4" in tables or "file_hardlink_info_v4" in tables:
+    if (
+        "image_hardlink_info_v4" in tables
+        or "file_hardlink_info_v4" in tables
+        or "image_hardlink_info_v3" in tables
+        or "file_hardlink_info_v3" in tables
+    ):
         kinds.append("hardlink")
     return kinds
 
@@ -2509,16 +2518,22 @@ def doctor(db: DatabaseSet) -> dict[str, Any]:
     }
 
 
-def optional_database_ready(db: DatabaseSet, path: Path | None, required_table: str) -> bool:
+def optional_database_ready(
+    db: DatabaseSet, path: Path | None, required_tables: str | tuple[str, ...]
+) -> bool:
     if not path or not path.exists():
         return False
+    names = (required_tables,) if isinstance(required_tables, str) else required_tables
     try:
         with db.connect(path) as conn:
-            row = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-                (required_table,),
-            ).fetchone()
-        return bool(row)
+            for name in names:
+                row = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    (name,),
+                ).fetchone()
+                if row:
+                    return True
+        return False
     except ReaderError:
         return False
 
@@ -2594,7 +2609,17 @@ def status(db: DatabaseSet) -> dict[str, Any]:
                 "unread": sessions_ready,
                 "stats": live_ready,
                 "media": live_ready,
-                "media_local_paths": optional_database_ready(db, db.hardlink_db, "image_hardlink_info_v4") and bool(db.resource_roots),
+                "media_local_paths": optional_database_ready(
+                    db,
+                    db.hardlink_db,
+                    (
+                        "image_hardlink_info_v4",
+                        "image_hardlink_info_v3",
+                        "file_hardlink_info_v4",
+                        "file_hardlink_info_v3",
+                    ),
+                )
+                and bool(db.resource_roots),
                 "transfers": live_ready,
                 "red_packets": live_ready,
                 "forward_history": live_ready,
